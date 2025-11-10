@@ -746,20 +746,36 @@
         audioFile.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
+                console.log('📁 파일 선택됨:', file.name, '크기:', (file.size / 1024 / 1024).toFixed(2), 'MB');
+                
                 const reader = new FileReader();
                 
                 reader.onload = async function(event) {
                     const audioData = event.target.result;
+                    console.log('✅ 파일 읽기 완료, Base64 크기:', (audioData.length / 1024 / 1024).toFixed(2), 'MB');
                     
-                    // IndexedDB에 저장
+                    // IndexedDB에 저장 (크기 제한 없음)
                     try {
+                        if (!db) {
+                            console.warn('⚠️ DB가 초기화되지 않음, 재초기화 시도...');
+                            await initDB();
+                        }
+                        
+                        console.log('💾 IndexedDB 저장 시작...');
                         await saveAudioToDB(audioData, file.name);
+                        console.log('✅ IndexedDB 저장 완료!');
                     } catch (error) {
-                        console.warn('⚠️ 저장 실패:', error);
+                        console.error('❌ IndexedDB 저장 실패:', error);
+                        console.error('에러 상세:', error.message);
                     }
                     
-                    // 오디오 로드
+                    // 오디오 로드 (저장 실패해도 재생은 가능)
                     loadAudioFromData(audioData, file.name);
+                    console.log('🎵 오디오 로드 완료');
+                };
+                
+                reader.onerror = function(error) {
+                    console.error('❌ 파일 읽기 실패:', error);
                 };
                 
                 reader.readAsDataURL(file);
@@ -774,18 +790,35 @@
         }
 
         // 페이지 로드 시 저장된 오디오 자동 복원
-        window.addEventListener('DOMContentLoaded', async function() {
+        async function initializeAudio() {
+            console.log('🔄 오디오 시스템 초기화 시작...');
+            
             try {
                 await initDB();
+                console.log('✅ IndexedDB 초기화 성공');
+                
                 const savedAudio = await loadAudioFromDB();
                 
                 if (savedAudio) {
+                    console.log('📂 저장된 오디오 발견:', savedAudio.fileName, 
+                              '크기:', (savedAudio.audioData.length / 1024 / 1024).toFixed(2), 'MB');
                     loadAudioFromData(savedAudio.audioData, savedAudio.fileName);
+                    console.log('✅ 오디오 자동 복원 완료!');
+                } else {
+                    console.log('ℹ️ 저장된 오디오 없음 - 새 파일을 업로드하세요');
                 }
             } catch (error) {
-                console.error('❌ DB 초기화 실패:', error);
+                console.error('❌ 오디오 초기화 실패:', error);
+                console.error('에러 상세:', error.message);
             }
-        });
+        }
+
+        // 즉시 실행
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeAudio);
+        } else {
+            initializeAudio();
+        }
 
         // 오디오 이벤트 리스너
         function setupAudioListeners() {
