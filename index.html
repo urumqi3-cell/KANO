@@ -678,10 +678,47 @@
         audioFile.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
-                const url = URL.createObjectURL(file);
-                audio.src = url;
-                fileName.textContent = `✅ ${file.name}`;
-                uploadZone.classList.add('has-file');
+                const reader = new FileReader();
+                
+                reader.onload = function(event) {
+                    const audioData = event.target.result;
+                    
+                    // localStorage에 저장 (최대 5MB까지만)
+                    try {
+                        if (audioData.length < 5 * 1024 * 1024) {
+                            localStorage.setItem('savedAudioData', audioData);
+                            localStorage.setItem('savedAudioName', file.name);
+                            console.log('✅ 오디오 파일 저장됨:', file.name);
+                        } else {
+                            console.warn('⚠️ 파일이 너무 커서 저장할 수 없습니다 (5MB 이상)');
+                        }
+                    } catch (e) {
+                        console.warn('⚠️ 저장 실패:', e);
+                    }
+                    
+                    // 오디오 로드
+                    loadAudioFromData(audioData, file.name);
+                };
+                
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // 오디오 데이터로부터 로드하는 함수
+        function loadAudioFromData(audioData, name) {
+            audio.src = audioData;
+            fileName.textContent = `✅ ${name}`;
+            uploadZone.classList.add('has-file');
+        }
+
+        // 페이지 로드 시 저장된 오디오 자동 복원
+        window.addEventListener('DOMContentLoaded', function() {
+            const savedAudioData = localStorage.getItem('savedAudioData');
+            const savedAudioName = localStorage.getItem('savedAudioName');
+            
+            if (savedAudioData && savedAudioName) {
+                console.log('📂 저장된 오디오 불러오기:', savedAudioName);
+                loadAudioFromData(savedAudioData, savedAudioName);
             }
         });
 
