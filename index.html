@@ -675,25 +675,87 @@
         }
 
         // 오디오 파일 업로드
+        // IndexedDB 초기화
+        let db;
+        const dbName = 'LyricsAppDB';
+        const storeName = 'audioFiles';
+
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(dbName, 1);
+                
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => {
+                    db = request.result;
+                    resolve(db);
+                };
+                
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains(storeName)) {
+                        db.createObjectStore(storeName, { keyPath: 'id' });
+                    }
+                };
+            });
+        }
+
+        // IndexedDB에 오디오 저장
+        function saveAudioToDB(audioData, fileName) {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction([storeName], 'readwrite');
+                const store = transaction.objectStore(storeName);
+                
+                const data = {
+                    id: 'currentAudio',
+                    audioData: audioData,
+                    fileName: fileName,
+                    timestamp: Date.now()
+                };
+                
+                const request = store.put(data);
+                request.onsuccess = () => {
+                    console.log('✅ 오디오 저장 완료:', fileName);
+                    resolve();
+                };
+                request.onerror = () => {
+                    console.error('❌ 저장 실패:', request.error);
+                    reject(request.error);
+                };
+            });
+        }
+
+        // IndexedDB에서 오디오 불러오기
+        function loadAudioFromDB() {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction([storeName], 'readonly');
+                const store = transaction.objectStore(storeName);
+                const request = store.get('currentAudio');
+                
+                request.onsuccess = () => {
+                    if (request.result) {
+                        console.log('📂 저장된 오디오 불러오기:', request.result.fileName);
+                        resolve(request.result);
+                    } else {
+                        resolve(null);
+                    }
+                };
+                request.onerror = () => reject(request.error);
+            });
+        }
+
         audioFile.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
                 const reader = new FileReader();
                 
-                reader.onload = function(event) {
+                reader.onload = async function(event) {
                     const audioData = event.target.result;
                     
-                    // localStorage에 저장 (최대 5MB까지만)
+                    // IndexedDB에 저장
                     try {
-                        if (audioData.length < 5 * 1024 * 1024) {
-                            localStorage.setItem('savedAudioData', audioData);
-                            localStorage.setItem('savedAudioName', file.name);
-                            console.log('✅ 오디오 파일 저장됨:', file.name);
-                        } else {
-                            console.warn('⚠️ 파일이 너무 커서 저장할 수 없습니다 (5MB 이상)');
-                        }
-                    } catch (e) {
-                        console.warn('⚠️ 저장 실패:', e);
+                        await saveAudioToDB(audioData, file.name);
+                    } catch (error) {
+                        console.warn('⚠️ 저장 실패:', error);
                     }
                     
                     // 오디오 로드
@@ -712,13 +774,16 @@
         }
 
         // 페이지 로드 시 저장된 오디오 자동 복원
-        window.addEventListener('DOMContentLoaded', function() {
-            const savedAudioData = localStorage.getItem('savedAudioData');
-            const savedAudioName = localStorage.getItem('savedAudioName');
-            
-            if (savedAudioData && savedAudioName) {
-                console.log('📂 저장된 오디오 불러오기:', savedAudioName);
-                loadAudioFromData(savedAudioData, savedAudioName);
+        window.addEventListener('DOMContentLoaded', async function() {
+            try {
+                await initDB();
+                const savedAudio = await loadAudioFromDB();
+                
+                if (savedAudio) {
+                    loadAudioFromData(savedAudio.audioData, savedAudio.fileName);
+                }
+            } catch (error) {
+                console.error('❌ DB 초기화 실패:', error);
             }
         });
 
